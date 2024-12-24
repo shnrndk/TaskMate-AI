@@ -12,14 +12,18 @@ CREATE TABLE tasks (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   title VARCHAR(255) NOT NULL,
-  description TEXT,
-  deadline DATETIME,
+  description TEXT NULL,
+  start_time DATETIME NULL,
+  end_time DATETIME NULL,
+  duration INT NULL, -- Duration in minutes
+  deadline DATETIME NULL,
   priority ENUM('Low', 'Medium', 'High') DEFAULT 'Medium',
-  category VARCHAR(100),
+  category VARCHAR(100) NULL,
   status ENUM('Pending', 'Completed') DEFAULT 'Pending',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
 
 -- Seed Initial Data
 INSERT INTO users (username, email, password)

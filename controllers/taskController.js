@@ -17,36 +17,44 @@ const getAllTasks = async (req, res) => {
 
 const createTask = async (req, res) => {
     try {
-      const userId = req.user?.id || req.body.user_id;
-      if (!userId) {
-        return res.status(400).json({ message: 'User ID is required' });
-      }
-  
-      const { title, description, deadline, priority, category } = req.body;
+      const { title, description, startTime, endTime, duration, deadline, priority, category } = req.body;
   
       if (!title) {
-        return res.status(400).json({ message: 'Task title is required' });
+        return res.status(400).json({ message: 'Title is required' });
       }
   
-      // Convert ISO 8601 timestamp to MySQL-compatible DATETIME format
-      const formattedDeadline = deadline ? new Date(deadline).toISOString().slice(0, 19).replace('T', ' ') : null;
+      let calculatedDuration = duration;
+  
+      // Calculate duration if not provided but startTime and endTime are available
+      if (!duration && startTime && endTime) {
+        const start = new Date(startTime);
+        const end = new Date(endTime);
+        calculatedDuration = Math.abs((end - start) / (1000 * 60)); // Duration in minutes
+      }
   
       // Insert task into the database
-      const result = await db.query(
-        `INSERT INTO tasks (user_id, title, description, deadline, priority, category, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'Pending')`,
-        [userId, title, description, formattedDeadline, priority, category]
+      const [result] = await db.query(
+        `INSERT INTO tasks (title, description, start_time, end_time, duration, deadline, priority, category, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+        [
+          title,
+          description || null,
+          startTime || null,
+          endTime || null,
+          calculatedDuration || null,
+          deadline || null,
+          priority || 'Medium',
+          category || null,
+        ]
       );
   
-      res.status(201).json({
-        message: 'Task created successfully',
-        task_id: result[0].insertId,
-      });
+      res.status(201).json({ message: 'Task created successfully', taskId: result.insertId });
     } catch (err) {
-      console.error('Error creating task:', err);
+      console.error('Error creating task:', err.message);
       res.status(500).json({ message: 'Internal server error' });
     }
   };
+  
   const updateTask = async (req, res) => {
     try {
       const { id } = req.params;
