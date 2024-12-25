@@ -3,8 +3,7 @@ const db = require('../config/db'); // Import the database connection
 const getAllTasks = async (req, res) => {
     try {
         // Replace the user_id with the authenticated user's ID
-        const userId = req.user?.id // Use `req.user.id` for JWT authentication; use `1` for testing.
-    
+        const userId = req.user?.id  // Use `req.user.id` for JWT authentication; use `1` for testing.
         // Fetch tasks from the database
         const [tasks] = await db.query('SELECT * FROM tasks WHERE user_id = ?', [userId]);
     
@@ -24,6 +23,12 @@ const createTask = async (req, res) => {
       }
   
       let calculatedDuration = duration;
+
+      // Get user ID from the authenticated request
+      const userId = req.user.id;
+
+      // Convert ISO 8601 timestamp to MySQL-compatible DATETIME format
+      const formattedDeadline = deadline ? new Date(deadline).toISOString().slice(0, 19).replace('T', ' ') : null;
   
       // Calculate duration if not provided but startTime and endTime are available
       if (!duration && startTime && endTime) {
@@ -34,15 +39,16 @@ const createTask = async (req, res) => {
   
       // Insert task into the database
       const [result] = await db.query(
-        `INSERT INTO tasks (title, description, start_time, end_time, duration, deadline, priority, category, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+        `INSERT INTO tasks (user_id, title, description, start_time, end_time, duration, deadline, priority, category, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
         [
+          userId,
           title,
           description || null,
           startTime || null,
           endTime || null,
           calculatedDuration || null,
-          deadline || null,
+          formattedDeadline || null,
           priority || 'Medium',
           category || null,
         ]
