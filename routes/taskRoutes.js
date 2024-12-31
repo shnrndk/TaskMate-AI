@@ -6,6 +6,7 @@ const taskController = require('../controllers/taskController');
 router.use(authenticate); // Apply authentication middleware to all routes
 
 router.get('/', taskController.getAllTasks);
+router.get('/:id', taskController.getTaskById);
 router.post('/', taskController.createTask);
 router.put('/:id', taskController.updateTask);
 router.put('/:id/start', taskController.startTask);

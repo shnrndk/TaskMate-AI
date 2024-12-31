@@ -14,6 +14,21 @@ const getAllTasks = async (req, res) => {
     }
 };
 
+const getTaskById = async (req, res) => {
+    try {
+        // Replace the user_id with the authenticated user's ID
+        const userId = req.user?.id;
+        const taskId = req.params?.id;
+        // Fetch tasks from the database
+        const [tasks] = await db.query('SELECT * FROM tasks WHERE user_id = ? AND id = ?', [userId, taskId]);
+    
+        res.status(200).json(tasks);
+    } catch (err) {
+        console.error('Error fetching tasks:', err);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
 const createTask = async (req, res) => {
     try {
       const { title, description, startTime, endTime, duration, deadline, priority, category } = req.body;
@@ -258,5 +273,5 @@ const startTask = async (req, res) => {
   
   
 module.exports = { getAllTasks, createTask, updateTask, deleteTask,
-     startTask, pauseTask, resumeTask};
+     startTask, pauseTask, resumeTask, getTaskById};
   
