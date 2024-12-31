@@ -110,6 +110,153 @@ const createTask = async (req, res) => {
     }
   };
 
+// Start a task
+const startTask = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        const taskId = req.params?.id;
+    
+        // Check if the task exists and belongs to the user
+        const [task] = await db.query(
+          `SELECT * FROM tasks WHERE id = ? AND user_id = ?`,
+          [taskId, userId]
+        );
+      if (task.length === 0) {
+        return res.status(404).json({ message: "Task not found or unauthorized" });
+      }
   
-module.exports = { getAllTasks, createTask, updateTask, deleteTask };
+      // Ensure the task isn't already in progress or completed
+      if (task[0].status === "In Progress" || task[0].status === "Completed") {
+        return res
+          .status(400)
+          .json({ message: "Task is already in progress or completed." });
+      }
+  
+      // Update the task to start it, initializing start_time and setting status
+      const [result] = await db.query(
+        `UPDATE tasks 
+         SET start_time = NOW(), 
+             status = 'In Progress' 
+         WHERE id = ? AND user_id = ?`,
+        [taskId, userId]
+      );
+  
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Task not found or unauthorized" });
+      }
+  
+      // Log timer-related data in task_timer_sessions
+      const [sessionResult] = await db.query(
+        `INSERT INTO task_timer_sessions 
+         (task_id, user_id, start_time, paused_duration, work_duration, break_duration, background_time) 
+         VALUES (?, ?, NOW(), 0, 0, 0, 0)`,
+        [taskId, userId]
+      );
+  
+      res.status(200).json({
+        message: "Task started successfully",
+        sessionId: sessionResult.insertId,
+      });
+    } catch (err) {
+      console.error("Error starting task:", err.message);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  };
+
+  const pauseTask = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        const taskId = req.params?.id;
+  
+      // Get the current task session
+      const [session] = await db.query(
+        `SELECT * FROM task_timer_sessions WHERE task_id = ? AND user_id = ? AND end_time IS NULL`,
+        [taskId, userId]
+      );
+  
+      if (session.length === 0) {
+        return res
+          .status(404)
+          .json({ message: "Task session not found or task is already completed." });
+      }
+  
+      // Calculate the time since the task started
+      const now = new Date();
+      const startTime = new Date(session[0].start_time);
+      const elapsedTime = Math.floor((now - startTime) / 1000); // Time in seconds
+  
+      // Update the paused duration and mark the task as paused
+      const [result] = await db.query(
+        `UPDATE task_timer_sessions 
+         SET paused_duration = paused_duration + ?, 
+             end_time = NOW()
+         WHERE id = ?`,
+        [elapsedTime, session[0].id]
+      );
+  
+      const [taskUpdate] = await db.query(
+        `UPDATE tasks SET status = 'Paused' WHERE id = ? AND user_id = ?`,
+        [taskId, userId]
+      );
+  
+      if (result.affectedRows === 0 || taskUpdate.affectedRows === 0) {
+        return res.status(404).json({ message: "Failed to pause the task." });
+      }
+  
+      res.status(200).json({
+        message: "Task paused successfully",
+        pausedDuration: session[0].paused_duration + elapsedTime,
+      });
+    } catch (err) {
+      console.error("Error pausing task:", err.message);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  };
+  
+  const resumeTask = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        const taskId = req.params?.id;
+  
+      // Verify that the task is paused
+      const [task] = await db.query(
+        `SELECT * FROM tasks WHERE id = ? AND user_id = ? AND status = 'Paused'`,
+        [taskId, userId]
+      );
+  
+      if (task.length === 0) {
+        return res.status(404).json({ message: "Task is not paused or not found." });
+      }
+  
+      // Start a new timer session
+      const [result] = await db.query(
+        `INSERT INTO task_timer_sessions 
+         (task_id, user_id, start_time, paused_duration, work_duration, break_duration, background_time) 
+         VALUES (?, ?, NOW(), 0, 0, 0, 0)`,
+        [taskId, userId]
+      );
+  
+      // Update the task status
+      const [taskUpdate] = await db.query(
+        `UPDATE tasks SET status = 'In Progress' WHERE id = ? AND user_id = ?`,
+        [taskId, userId]
+      );
+  
+      if (result.affectedRows === 0 || taskUpdate.affectedRows === 0) {
+        return res.status(500).json({ message: "Failed to resume the task." });
+      }
+  
+      res.status(200).json({
+        message: "Task resumed successfully",
+        sessionId: result.insertId,
+      });
+    } catch (err) {
+      console.error("Error resuming task:", err.message);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  };
+  
+  
+module.exports = { getAllTasks, createTask, updateTask, deleteTask,
+     startTask, pauseTask, resumeTask};
   

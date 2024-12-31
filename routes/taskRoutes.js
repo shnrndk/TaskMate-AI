@@ -8,6 +8,9 @@ router.use(authenticate); // Apply authentication middleware to all routes
 router.get('/', taskController.getAllTasks);
 router.post('/', taskController.createTask);
 router.put('/:id', taskController.updateTask);
+router.put('/:id/start', taskController.startTask);
+router.put('/:id/pause', taskController.pauseTask);
+router.put('/:id/resume', taskController.resumeTask);
 router.delete('/:id', taskController.deleteTask);
 
 module.exports = router;
