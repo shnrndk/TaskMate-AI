@@ -61,7 +61,7 @@ const updateSubTask = async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, status, start_time, end_time } = req.body;
-
+    console.log(req.body)
     const [result] = await db.query(
       `UPDATE sub_tasks SET 
         title = ?, 

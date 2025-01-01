@@ -139,7 +139,6 @@ const startTask = async (req, res) => {
       if (task.length === 0) {
         return res.status(404).json({ message: "Task not found or unauthorized" });
       }
-  
       // Ensure the task isn't already in progress or completed
       if (task[0].status === "In Progress" || task[0].status === "Completed") {
         return res
