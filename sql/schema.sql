@@ -24,9 +24,26 @@ CREATE TABLE tasks (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE sub_tasks (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    task_id INT NOT NULL, -- Parent task ID
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    duration INT, -- Estimated duration in minutes
+    status ENUM('Pending', 'In Progress', 'Completed', 'Paused') DEFAULT 'Pending',
+    start_time DATETIME NULL,
+    end_time DATETIME NULL,
+    deadline DATETIME NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+
+
 CREATE TABLE task_timer_sessions (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    task_id INT NOT NULL,
+    task_id INT NOT NULL, -- References the parent task
+    sub_task_id INT DEFAULT NULL, -- Nullable reference to sub_tasks table
     user_id INT NOT NULL,
     start_time DATETIME NOT NULL,
     end_time DATETIME,
@@ -36,21 +53,23 @@ CREATE TABLE task_timer_sessions (
     break_duration INT DEFAULT 0, -- Total break time in seconds
     background_time INT DEFAULT 0, -- Total elapsed time in seconds
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (sub_task_id) REFERENCES sub_tasks(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE task_statistics (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    task_id INT NOT NULL,
+    task_id INT NOT NULL, -- References the parent task
+    sub_task_id INT DEFAULT NULL, -- Nullable reference to sub_tasks table
     user_id INT NOT NULL,
     total_pomodoros INT DEFAULT 0, -- Total Pomodoro cycles completed
     total_work_time INT DEFAULT 0, -- Total work time in seconds
     total_break_time INT DEFAULT 0, -- Total break time in seconds
     total_elapsed_time INT DEFAULT 0, -- Total elapsed time (including pauses)
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (sub_task_id) REFERENCES sub_tasks(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
 
 -- Seed Initial Data
 INSERT INTO users (username, email, password)

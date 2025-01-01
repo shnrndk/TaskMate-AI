@@ -271,7 +271,36 @@ const startTask = async (req, res) => {
     }
   };
   
+  const checkTaskStarted = async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      const taskId = req.params?.id;
   
+      // Query to check if a task is currently active
+      const [rows] = await db.query(
+        `SELECT * FROM task_timer_sessions 
+         WHERE task_id = ? AND user_id = ? AND end_time IS NULL`,
+        [taskId, userId]
+      );
+  
+      if (rows.length > 0) {
+        return res.status(200).json({
+          message: "Task is currently started.",
+          isStarted: true,
+          session: rows[0], // Return the session details if needed
+        });
+      } else {
+        return res.status(200).json({
+          message: "Task is not started.",
+          isStarted: false,
+        });
+      }
+    } catch (err) {
+      console.error("Error checking task status:", err.message);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  };
+
 module.exports = { getAllTasks, createTask, updateTask, deleteTask,
-     startTask, pauseTask, resumeTask, getTaskById};
+     startTask, pauseTask, resumeTask, getTaskById, checkTaskStarted};
   
