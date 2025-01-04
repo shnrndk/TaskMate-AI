@@ -271,7 +271,6 @@ const resumeTask = async (req, res) => {
        WHERE id = ?`,
       [pausedElapsedTime, session[0].id]
     );
-    console.log("pausedElapsedTime", pausedElapsedTime);
 
     // Update the task status
     const [taskUpdate] = await db.query(
@@ -323,6 +322,75 @@ const resumeTask = async (req, res) => {
     }
   };
 
+const finishTask = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const taskId = req.params?.id;
+    console.log("finishTask", userId, taskId);
+    // Verify that the task exists and is in progress
+    const [task] = await db.query(
+      `SELECT * FROM tasks WHERE id = ? AND user_id = ? AND status = 'In Progress' OR status = 'Paused'`,
+      [taskId, userId]
+    );
+
+    if (task.length === 0) {
+      return res.status(404).json({ message: "Task is not in progress or not found." });
+    }
+
+    // Get the most recent session for this task
+    const [session] = await db.query(
+      `SELECT * FROM task_timer_sessions WHERE task_id = ? AND user_id = ? ORDER BY start_time DESC LIMIT 1`,
+      [taskId, userId]
+    );
+
+    if (session.length === 0) {
+      return res.status(404).json({ message: "No active session found for this task." });
+    }
+
+    const now = new Date();
+    const startTime = new Date(session[0].start_time);
+
+    // Calculate background time
+    const backgroundTime = Math.floor((now - startTime) / 1000); // Time in seconds
+
+    // Assume `number_of_pomodoro_cycles` is stored in the session or calculate it based on elapsed time
+    const pomodoroCycleDuration = 25 * 60; // 25 minutes in seconds
+    const breakDurationPerCycle = 5 * 60; // 5 minutes in seconds
+    const numberOfPomodoroCycles = Math.floor(backgroundTime / pomodoroCycleDuration);
+
+    // Calculate break time
+    const breakTime = numberOfPomodoroCycles * breakDurationPerCycle;
+
+    // Update the session with background time and break time
+    await db.query(
+      `UPDATE task_timer_sessions 
+        SET background_time = ?, break_duration = ?, end_time = NOW() 
+        WHERE id = ?`,
+      [backgroundTime, breakTime, session[0].id]
+    );
+
+    // Update the task status to 'Completed'
+    const [taskUpdate] = await db.query(
+      `UPDATE tasks SET status = 'Completed' WHERE id = ? AND user_id = ?`,
+      [taskId, userId]
+    );
+
+    if (taskUpdate.affectedRows === 0) {
+      return res.status(500).json({ message: "Failed to complete the task." });
+    }
+
+    res.status(200).json({
+      message: "Task completed successfully",
+      backgroundTime,
+      breakTime,
+      numberOfPomodoroCycles,
+    });
+  } catch (err) {
+    console.error("Error finishing task:", err.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+  
 module.exports = { getAllTasks, createTask, updateTask, deleteTask,
-     startTask, pauseTask, resumeTask, getTaskById, checkTaskStarted};
+     startTask, pauseTask, resumeTask, getTaskById, checkTaskStarted, finishTask};
   
