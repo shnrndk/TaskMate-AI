@@ -61,7 +61,16 @@ const updateSubTask = async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, status, start_time, end_time } = req.body;
-    console.log(req.body)
+
+    // Convert ISO 8601 to MySQL datetime format
+    const formatDateTime = (isoString) => {
+      const date = new Date(isoString);
+      return date.toISOString().slice(0, 19).replace('T', ' '); // `YYYY-MM-DD HH:MM:SS`
+    };
+
+    const formattedStartTime = start_time ? formatDateTime(start_time) : null;
+    const formattedEndTime = end_time ? formatDateTime(end_time) : null;
+
     const [result] = await db.query(
       `UPDATE sub_tasks SET 
         title = ?, 
@@ -71,7 +80,7 @@ const updateSubTask = async (req, res) => {
         end_time = ?,
         updated_at = NOW()
        WHERE id = ?`,
-      [title, description, status, start_time, end_time, id]
+      [title, description, status, formattedStartTime, formattedEndTime, id]
     );
 
     if (result.affectedRows === 0) {
@@ -84,6 +93,7 @@ const updateSubTask = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
 
 // Delete a sub-task
 const deleteSubTask = async (req, res) => {
@@ -160,8 +170,7 @@ const startSubTask = async (req, res) => {
 const pauseSubTask = async (req, res) => {
     try {
         const userId = req.user?.id;
-        const subTaskId = req.params?.id;
-
+        const subTaskId = req.params?.subTaskId;
         // Get the current sub-task session
         const [session] = await db.query(
           `SELECT * FROM task_timer_sessions WHERE sub_task_id = ? AND user_id = ? AND end_time IS NULL`,
@@ -210,7 +219,7 @@ const pauseSubTask = async (req, res) => {
 const resumeSubTask = async (req, res) => {
     try {
         const userId = req.user?.id;
-        const subTaskId = req.params?.id;
+        const subTaskId = req.params?.subTaskId;
 
         // Verify that the sub-task is paused
         const [subTask] = await db.query(
@@ -250,6 +259,36 @@ const resumeSubTask = async (req, res) => {
     }
 };
 
+const checkSubTaskStarted = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const subTaskId = req.params?.subTaskId;
+
+    // Query to check if a sub task is currently active
+    const [rows] = await db.query(
+      `SELECT * FROM task_timer_sessions 
+       WHERE sub_task_id = ? AND user_id = ? AND end_time IS NULL`,
+      [subTaskId, userId]
+    );
+
+    if (rows.length > 0) {
+      return res.status(200).json({
+        message: "Task is currently started.",
+        isStarted: true,
+        session: rows[0], // Return the session details if needed
+      });
+    } else {
+      return res.status(200).json({
+        message: "Task is not started.",
+        isStarted: false,
+      });
+    }
+  } catch (err) {
+    console.error("Error checking task status:", err.message);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 module.exports = {
   getSubTasks,
   createSubTask,
@@ -258,5 +297,6 @@ module.exports = {
   startSubTask,
   pauseSubTask,
   resumeSubTask,
-  getSubTaskById
+  getSubTaskById,
+  checkSubTaskStarted
 };
