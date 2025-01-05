@@ -23,12 +23,13 @@ router.get("/sub-tasks/:subTaskId", subTaskController.getSubTaskById);
 router.put("/sub-tasks/:subTaskId/start", subTaskController.startSubTask);
 router.put("/sub-tasks/:subTaskId/pause", subTaskController.pauseSubTask);
 router.put("/sub-tasks/:subTaskId/resume", subTaskController.resumeSubTask);
+router.put("/sub-tasks/:subTaskId/finish", subTaskController.finishSubTask);
 router.get("/sub-tasks/:id/status", subTaskController.checkSubTaskStarted);
 // Create a new sub-task for a specific task
 router.post("/:taskId/sub-tasks", subTaskController.createSubTask);
 // Update a sub-task
 router.put("/sub-tasks/:id", subTaskController.updateSubTask);
 // Delete a sub-task
-router.delete("/sub-tasks/:id", subTaskController.deleteSubTask);
+router.delete("/:id/sub-tasks/:subTaskId", subTaskController.deleteSubTask);
 
 module.exports = router;

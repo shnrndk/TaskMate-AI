@@ -19,6 +19,7 @@ CREATE TABLE tasks (
     start_time DATETIME NULL,
     end_time DATETIME NULL,
     deadline DATETIME NULL,
+    subtasks_count INT DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -47,6 +48,7 @@ CREATE TABLE task_timer_sessions (
     user_id INT NOT NULL,
     start_time DATETIME NOT NULL,
     end_time DATETIME,
+    last_paused_time DATETIME, -- Last paused time
     paused_duration INT DEFAULT 0, -- Total paused time in seconds
     pomodoro_cycles INT DEFAULT 0, -- Total Pomodoro cycles completed in this session
     work_duration INT DEFAULT 0, -- Total work time in seconds

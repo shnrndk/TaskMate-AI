@@ -41,13 +41,30 @@ const createSubTask = async (req, res) => {
       return res.status(400).json({ message: "Title is required" });
     }
 
+    // Create the sub-task
     const [result] = await db.query(
       `INSERT INTO sub_tasks (task_id, title, description, status) VALUES (?, ?, ?, ?)`,
       [taskId, title, description || null, status || "Pending"]
     );
 
+    if (result.affectedRows === 0) {
+      return res.status(500).json({ message: "Failed to create sub-task." });
+    }
+
+    // Increment the sub_task_count in the tasks table
+    const [taskUpdate] = await db.query(
+      `UPDATE tasks SET subtasks_count = subtasks_count + 1 WHERE id = ?`,
+      [taskId]
+    );
+
+    if (taskUpdate.affectedRows === 0) {
+      return res.status(500).json({
+        message: "Sub-task created, but failed to update the sub-task count.",
+      });
+    }
+
     res.status(201).json({
-      message: "Sub-task created successfully",
+      message: "Sub-task created successfully and sub-task count updated.",
       subTaskId: result.insertId,
     });
   } catch (err) {
@@ -55,6 +72,7 @@ const createSubTask = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
 
 // Update a sub-task
 const updateSubTask = async (req, res) => {
@@ -98,10 +116,20 @@ const updateSubTask = async (req, res) => {
 // Delete a sub-task
 const deleteSubTask = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id, subTaskId } = req.params;
+    console.log(id)
+    const [result] = await db.query(`DELETE FROM sub_tasks WHERE id = ?`, [subTaskId]);
+    // Decrement the sub_task_count in the tasks table
+    const [taskUpdate] = await db.query(
+      `UPDATE tasks SET subtasks_count = subtasks_count - 1 WHERE id = ?`,
+      [id]
+    );
 
-    const [result] = await db.query(`DELETE FROM sub_tasks WHERE id = ?`, [id]);
-
+    if (taskUpdate.affectedRows === 0) {
+      return res.status(500).json({
+        message: "Sub-task deleted, but failed to update the sub-task count.",
+      });
+    }
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: "Sub-task not found" });
     }
@@ -115,149 +143,170 @@ const deleteSubTask = async (req, res) => {
 
 // Start a sub-task
 const startSubTask = async (req, res) => {
-    try {
-        const subTaskId = req.params?.subTaskId;
-        const userId = req.user?.id;
+  try {
+    const subTaskId = req.params?.subTaskId;
+    const userId = req.user?.id;
 
-        // Check if the sub-task exists and belongs to the user
-        const [subTask] = await db.query(
-          `SELECT * FROM sub_tasks WHERE id = ?`,
-          [subTaskId]
-        );
+    // Check if the sub-task exists and belongs to the user
+    const [subTask] = await db.query(
+      `SELECT * FROM sub_tasks WHERE id = ?`,
+      [subTaskId]
+    );
 
-        if (subTask.length === 0) {
-          return res.status(404).json({ message: "Sub-task not found or unauthorized" });
-        }
-
-        // Ensure the sub-task isn't already in progress or completed
-        if (subTask[0].status === "In Progress" || subTask[0].status === "Completed") {
-          return res
-            .status(400)
-            .json({ message: "Sub-task is already in progress or completed." });
-        }
-
-        // Update the sub-task to start it, initializing start_time and setting status
-        const [result] = await db.query(
-          `UPDATE sub_tasks 
-           SET start_time = NOW(), 
-               status = 'In Progress' 
-           WHERE id = ?`,
-          [subTaskId]
-        );
-
-        if (result.affectedRows === 0) {
-          return res.status(404).json({ message: "Sub-task not found or unauthorized" });
-        }
-
-        // Log timer-related data in task_timer_sessions
-        const [sessionResult] = await db.query(
-          `INSERT INTO task_timer_sessions 
-           (task_id, sub_task_id, user_id, start_time, paused_duration, work_duration, break_duration, background_time) 
-           VALUES (?, ?, ?, NOW(), 0, 0, 0, 0)`,
-          [subTask[0].task_id, subTaskId, userId]
-        );
-
-        res.status(200).json({
-          message: "Sub-task started successfully",
-          sessionId: sessionResult.insertId,
-        });
-    } catch (err) {
-      console.error("Error starting sub-task:", err.message);
-      res.status(500).json({ message: "Internal server error" });
+    if (subTask.length === 0) {
+      return res.status(404).json({ message: "Sub-task not found or unauthorized" });
     }
+
+    // Ensure the sub-task isn't already in progress or completed
+    if (subTask[0].status === "In Progress" || subTask[0].status === "Completed") {
+      return res.status(400).json({ message: "Sub-task is already in progress or completed." });
+    }
+
+    // Update the sub-task to start it
+    await db.query(
+      `UPDATE sub_tasks 
+       SET start_time = NOW(), 
+           status = 'In Progress' 
+       WHERE id = ?`,
+      [subTaskId]
+    );
+
+    // Log timer-related data in task_timer_sessions
+    const [sessionResult] = await db.query(
+      `INSERT INTO task_timer_sessions 
+       (task_id, sub_task_id, user_id, start_time, paused_duration, work_duration, break_duration, background_time) 
+       VALUES (?, ?, ?, NOW(), 0, 0, 0, 0)`,
+      [subTask[0].task_id, subTaskId, userId]
+    );
+
+    res.status(200).json({
+      message: "Sub-task started successfully",
+      sessionId: sessionResult.insertId,
+    });
+  } catch (err) {
+    console.error("Error starting sub-task:", err.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
 };
 
+// Pause a sub-task
 const pauseSubTask = async (req, res) => {
-    try {
-        const userId = req.user?.id;
-        const subTaskId = req.params?.subTaskId;
-        // Get the current sub-task session
-        const [session] = await db.query(
-          `SELECT * FROM task_timer_sessions WHERE sub_task_id = ? AND user_id = ? AND end_time IS NULL`,
-          [subTaskId, userId]
-        );
+  try {
+    const userId = req.user?.id;
+    const subTaskId = req.params?.subTaskId;
 
-        if (session.length === 0) {
-          return res
-            .status(404)
-            .json({ message: "Sub-task session not found or sub-task is already completed." });
-        }
+    // Get the current sub-task session
+    const [session] = await db.query(
+      `SELECT * FROM task_timer_sessions WHERE sub_task_id = ? AND user_id = ? AND end_time IS NULL`,
+      [subTaskId, userId]
+    );
 
-        // Calculate the time since the sub-task started
-        const now = new Date();
-        const startTime = new Date(session[0].start_time);
-        const elapsedTime = Math.floor((now - startTime) / 1000); // Time in seconds
-
-        // Update the paused duration and mark the sub-task as paused
-        const [result] = await db.query(
-          `UPDATE task_timer_sessions 
-           SET paused_duration = paused_duration + ?, 
-               end_time = NOW()
-           WHERE id = ?`,
-          [elapsedTime, session[0].id]
-        );
-
-        const [subTaskUpdate] = await db.query(
-          `UPDATE sub_tasks SET status = 'Paused' WHERE id = ?`,
-          [subTaskId]
-        );
-
-        if (result.affectedRows === 0 || subTaskUpdate.affectedRows === 0) {
-          return res.status(404).json({ message: "Failed to pause the sub-task." });
-        }
-
-        res.status(200).json({
-          message: "Sub-task paused successfully",
-          pausedDuration: session[0].paused_duration + elapsedTime,
-        });
-    } catch (err) {
-      console.error("Error pausing sub-task:", err.message);
-      res.status(500).json({ message: "Internal server error" });
+    if (session.length === 0) {
+      return res.status(404).json({
+        message: "Sub-task session not found or sub-task is already completed.",
+      });
     }
+
+    // Calculate the time since the sub-task started
+    const now = new Date();
+    const startTime = new Date(session[0].start_time);
+    const elapsedTime = Math.floor((now - startTime) / 1000); // Time in seconds
+
+    const updatedWorkDuration = session[0].work_duration + elapsedTime;
+    const incrementPomodoro = elapsedTime >= 25 * 60 ? 1 : 0; // Increment Pomodoro cycle if work session exceeds 25 mins
+
+    // Update session and sub-task statistics
+    await db.query(
+      `UPDATE task_timer_sessions 
+       SET paused_duration = paused_duration + ?, 
+           work_duration = ?, 
+           pomodoro_cycles = pomodoro_cycles + ?, 
+           last_paused_time = NOW()
+       WHERE id = ?`,
+      [elapsedTime, updatedWorkDuration, incrementPomodoro, session[0].id]
+    );
+
+    // Update the sub-task status to 'Paused'
+    const [subTaskUpdate] = await db.query(
+      `UPDATE sub_tasks SET status = 'Paused' WHERE id = ?`,
+      [subTaskId]
+    );
+
+    if (subTaskUpdate.affectedRows === 0) {
+      return res.status(404).json({ message: "Failed to pause the sub-task." });
+    }
+
+    res.status(200).json({
+      message: "Sub-task paused successfully",
+      pausedDuration: session[0].paused_duration + elapsedTime,
+    });
+  } catch (err) {
+    console.error("Error pausing sub-task:", err.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
 };
 
 const resumeSubTask = async (req, res) => {
-    try {
-        const userId = req.user?.id;
-        const subTaskId = req.params?.subTaskId;
+  try {
+    const userId = req.user?.id;
+    const subTaskId = req.params?.subTaskId;
 
-        // Verify that the sub-task is paused
-        const [subTask] = await db.query(
-          `SELECT * FROM sub_tasks WHERE id = ? AND status = 'Paused'`,
-          [subTaskId]
-        );
+    // Verify that the sub-task is paused
+    const [subTask] = await db.query(
+      `SELECT * FROM sub_tasks WHERE id = ? AND status = 'Paused'`,
+      [subTaskId]
+    );
 
-        if (subTask.length === 0) {
-          return res.status(404).json({ message: "Sub-task is not paused or not found." });
-        }
-
-        // Start a new timer session
-        const [result] = await db.query(
-          `INSERT INTO task_timer_sessions 
-           (task_id, sub_task_id, user_id, start_time, paused_duration, work_duration, break_duration, background_time) 
-           VALUES (?, ?, ?, NOW(), 0, 0, 0, 0)`,
-          [subTask[0].task_id, subTaskId, userId]
-        );
-
-        // Update the sub-task status
-        const [subTaskUpdate] = await db.query(
-          `UPDATE sub_tasks SET status = 'In Progress' WHERE id = ?`,
-          [subTaskId]
-        );
-
-        if (result.affectedRows === 0 || subTaskUpdate.affectedRows === 0) {
-          return res.status(500).json({ message: "Failed to resume the sub-task." });
-        }
-
-        res.status(200).json({
-          message: "Sub-task resumed successfully",
-          sessionId: result.insertId,
-        });
-    } catch (err) {
-      console.error("Error resuming sub-task:", err.message);
-      res.status(500).json({ message: "Internal server error" });
+    if (subTask.length === 0) {
+      return res.status(404).json({
+        message: "Sub-task is not paused or not found.",
+      });
     }
+
+    // Get the most recent session for this sub-task
+    const [session] = await db.query(
+      `SELECT * FROM task_timer_sessions WHERE sub_task_id = ? AND user_id = ? ORDER BY start_time DESC LIMIT 1`,
+      [subTaskId, userId]
+    );
+
+    if (session.length === 0) {
+      return res.status(404).json({ message: "No previous session found for this sub-task." });
+    }
+
+    // Calculate the paused duration
+    const now = new Date();
+    const lastPausedTime = new Date(session[0].last_paused_time);
+    const pausedElapsedTime = Math.floor((now - lastPausedTime) / 1000); // Time in seconds
+
+    // Update the session's paused duration and reset the last_paused_time
+    await db.query(
+      `UPDATE task_timer_sessions 
+       SET paused_duration = paused_duration + ?, 
+           last_paused_time = NULL 
+       WHERE id = ?`,
+      [pausedElapsedTime, session[0].id]
+    );
+
+    // Update the sub-task status to 'In Progress'
+    const [subTaskUpdate] = await db.query(
+      `UPDATE sub_tasks SET status = 'In Progress' WHERE id = ?`,
+      [subTaskId]
+    );
+
+    if (subTaskUpdate.affectedRows === 0) {
+      return res.status(500).json({ message: "Failed to resume the sub-task." });
+    }
+
+    res.status(200).json({
+      message: "Sub-task resumed successfully",
+      pausedDuration: session[0].paused_duration + pausedElapsedTime,
+    });
+  } catch (err) {
+    console.error("Error resuming sub-task:", err.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
 };
+
 
 const checkSubTaskStarted = async (req, res) => {
   try {
@@ -289,6 +338,75 @@ const checkSubTaskStarted = async (req, res) => {
   }
 };
 
+const finishSubTask = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const subTaskId = req.params?.subTaskId;
+
+    // Verify that the sub-task exists and is in progress or paused
+    const [subTask] = await db.query(
+      `SELECT * FROM sub_tasks WHERE id = ? AND (status = 'In Progress' OR status = 'Paused')`,
+      [subTaskId]
+    );
+
+    if (subTask.length === 0) {
+      return res.status(404).json({ message: "Sub-task is not in progress, paused, or not found." });
+    }
+
+    // Get the most recent session for this sub-task
+    const [session] = await db.query(
+      `SELECT * FROM task_timer_sessions WHERE sub_task_id = ? AND user_id = ? ORDER BY start_time DESC LIMIT 1`,
+      [subTaskId, userId]
+    );
+
+    if (session.length === 0) {
+      return res.status(404).json({ message: "No active session found for this sub-task." });
+    }
+
+    const now = new Date();
+    const startTime = new Date(session[0].start_time);
+
+    // Calculate `background_time`
+    const backgroundTime = Math.floor((now - startTime) / 1000); // Time in seconds
+
+    // Calculate `break_time` using Pomodoro logic
+    const pomodoroCycleDuration = 25 * 60; // 25 minutes in seconds
+    const breakDurationPerCycle = 5 * 60; // 5 minutes in seconds
+    const numberOfPomodoroCycles = Math.floor(backgroundTime / pomodoroCycleDuration);
+
+    // Calculate break time
+    const breakTime = numberOfPomodoroCycles * breakDurationPerCycle;
+
+    // Update the session with background time and break time
+    await db.query(
+      `UPDATE task_timer_sessions 
+       SET background_time = ?, break_duration = ?, end_time = NOW() 
+       WHERE id = ?`,
+      [backgroundTime, breakTime, session[0].id]
+    );
+
+    // Mark the sub-task as completed
+    const [subTaskUpdate] = await db.query(
+      `UPDATE sub_tasks SET status = 'Completed' WHERE id = ?`,
+      [subTaskId]
+    );
+
+    if (subTaskUpdate.affectedRows === 0) {
+      return res.status(500).json({ message: "Failed to complete the sub-task." });
+    }
+
+    res.status(200).json({
+      message: "Sub-task completed successfully",
+      backgroundTime,
+      breakTime,
+      numberOfPomodoroCycles,
+    });
+  } catch (err) {
+    console.error("Error finishing sub-task:", err.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 module.exports = {
   getSubTasks,
   createSubTask,
@@ -298,5 +416,6 @@ module.exports = {
   pauseSubTask,
   resumeSubTask,
   getSubTaskById,
-  checkSubTaskStarted
+  checkSubTaskStarted,
+  finishSubTask
 };
