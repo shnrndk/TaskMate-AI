@@ -213,20 +213,18 @@ const pauseSubTask = async (req, res) => {
     const elapsedTime = Math.floor((now - startTime) / 1000); // Time in seconds
 
     const updatedWorkDuration = session[0].work_duration + elapsedTime;
-    const incrementPomodoro = elapsedTime >= 25 * 60 ? 1 : 0; // Increment Pomodoro cycle if work session exceeds 25 mins
+    const incrementPomodoro = elapsedTime >= 25 * 60 ? 1 : 0; // Increment pomodoro if work session exceeds 25 mins
 
     // Update session and sub-task statistics
     await db.query(
       `UPDATE task_timer_sessions 
-       SET paused_duration = paused_duration + ?, 
-           work_duration = ?, 
+       SET work_duration = ?, 
            pomodoro_cycles = pomodoro_cycles + ?, 
            last_paused_time = NOW()
        WHERE id = ?`,
-      [elapsedTime, updatedWorkDuration, incrementPomodoro, session[0].id]
+      [updatedWorkDuration, incrementPomodoro, session[0].id]
     );
 
-    // Update the sub-task status to 'Paused'
     const [subTaskUpdate] = await db.query(
       `UPDATE sub_tasks SET status = 'Paused' WHERE id = ?`,
       [subTaskId]
@@ -238,7 +236,6 @@ const pauseSubTask = async (req, res) => {
 
     res.status(200).json({
       message: "Sub-task paused successfully",
-      pausedDuration: session[0].paused_duration + elapsedTime,
     });
   } catch (err) {
     console.error("Error pausing sub-task:", err.message);
@@ -265,7 +262,7 @@ const resumeSubTask = async (req, res) => {
 
     // Get the most recent session for this sub-task
     const [session] = await db.query(
-      `SELECT * FROM task_timer_sessions WHERE sub_task_id = ? AND user_id = ? ORDER BY start_time DESC LIMIT 1`,
+      `SELECT * FROM task_timer_sessions WHERE sub_task_id = ? AND user_id = ? ORDER BY end_time DESC LIMIT 1`,
       [subTaskId, userId]
     );
 
@@ -275,14 +272,13 @@ const resumeSubTask = async (req, res) => {
 
     // Calculate the paused duration
     const now = new Date();
-    const lastPausedTime = new Date(session[0].last_paused_time);
-    const pausedElapsedTime = Math.floor((now - lastPausedTime) / 1000); // Time in seconds
+    const lastSessionEndTime = new Date(session[0].last_paused_time);
+    const pausedElapsedTime = Math.floor((now - lastSessionEndTime) / 1000); // Time in seconds
 
-    // Update the session's paused duration and reset the last_paused_time
+    // Update the paused duration and last_paused_time of the existing session
     await db.query(
       `UPDATE task_timer_sessions 
-       SET paused_duration = paused_duration + ?, 
-           last_paused_time = NULL 
+       SET paused_duration = paused_duration + ?, last_paused_time = NOW() 
        WHERE id = ?`,
       [pausedElapsedTime, session[0].id]
     );
@@ -306,7 +302,6 @@ const resumeSubTask = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
-
 
 const checkSubTaskStarted = async (req, res) => {
   try {
