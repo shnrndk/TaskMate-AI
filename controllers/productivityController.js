@@ -92,4 +92,94 @@ const getProductivityData = async (req, res) => {
     }
 };
 
-module.exports = { getProductivityData };
+const getWeeklyProductivityData = async (req, res) => {
+    const { user_id, start_date, end_date } = req.query;
+
+    try {
+        const [rows] = await db.query(
+            `
+            SELECT 
+              DATE(task_timer_sessions.start_time) AS day,
+              SUM(task_timer_sessions.work_duration) AS work_duration,
+              SUM(task_timer_sessions.break_duration) AS break_duration,
+              COUNT(tasks.id) AS tasks_completed,
+              SUM(task_timer_sessions.pomodoro_cycles) AS pomodoro_cycles
+            FROM task_timer_sessions
+            LEFT JOIN tasks ON task_timer_sessions.task_id = tasks.id
+            WHERE tasks.user_id = ?
+              AND task_timer_sessions.start_time BETWEEN ? AND ?
+            GROUP BY DATE(task_timer_sessions.start_time)
+            ORDER BY day
+            `,
+            [user_id, start_date, end_date]
+        );
+
+        const dailyWorkData = rows.map(row => ({
+            day: row.day,
+            work_duration: row.work_duration || 0, // in seconds
+            break_duration: row.break_duration || 0, // in seconds
+            tasks_completed: row.tasks_completed || 0,
+            pomodoro_cycles: row.pomodoro_cycles || 0
+        }));
+
+        res.json({
+            weekly_data: dailyWorkData,
+            metrics: {
+                total_work_duration: dailyWorkData.reduce((sum, day) => sum + day.work_duration, 0),
+                total_break_duration: dailyWorkData.reduce((sum, day) => sum + day.break_duration, 0),
+                total_tasks_completed: dailyWorkData.reduce((sum, day) => sum + day.tasks_completed, 0),
+                total_pomodoro_cycles: dailyWorkData.reduce((sum, day) => sum + day.pomodoro_cycles, 0)
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching weekly productivity data:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+const getMonthlyProductivityData = async (req, res) => {
+    const { user_id, start_date, end_date } = req.query;
+
+    try {
+        const [rows] = await db.query(
+            `
+            SELECT 
+              YEARWEEK(task_timer_sessions.start_time, 1) AS week,
+              SUM(task_timer_sessions.work_duration) AS work_duration,
+              SUM(task_timer_sessions.break_duration) AS break_duration,
+              COUNT(tasks.id) AS tasks_completed,
+              SUM(task_timer_sessions.pomodoro_cycles) AS pomodoro_cycles
+            FROM task_timer_sessions
+            LEFT JOIN tasks ON task_timer_sessions.task_id = tasks.id
+            WHERE tasks.user_id = ?
+              AND task_timer_sessions.start_time BETWEEN ? AND ?
+            GROUP BY YEARWEEK(task_timer_sessions.start_time, 1)
+            ORDER BY week
+            `,
+            [user_id, start_date, end_date]
+        );
+
+        const weeklyWorkData = rows.map(row => ({
+            week: row.week, // e.g., 202401 for the 1st week of 2024
+            work_duration: row.work_duration || 0, // in seconds
+            break_duration: row.break_duration || 0, // in seconds
+            tasks_completed: row.tasks_completed || 0,
+            pomodoro_cycles: row.pomodoro_cycles || 0
+        }));
+
+        res.json({
+            monthly_data: weeklyWorkData,
+            metrics: {
+                total_work_duration: weeklyWorkData.reduce((sum, week) => sum + week.work_duration, 0),
+                total_break_duration: weeklyWorkData.reduce((sum, week) => sum + week.break_duration, 0),
+                total_tasks_completed: weeklyWorkData.reduce((sum, week) => sum + week.tasks_completed, 0),
+                total_pomodoro_cycles: weeklyWorkData.reduce((sum, week) => sum + week.pomodoro_cycles, 0)
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching monthly productivity data:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+module.exports = { getProductivityData, getWeeklyProductivityData, getMonthlyProductivityData };
