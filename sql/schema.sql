@@ -15,7 +15,7 @@ CREATE TABLE tasks (
     category VARCHAR(100),
     priority ENUM('Low', 'Medium', 'High') DEFAULT 'Medium',
     duration INT, -- Estimated duration in minutes
-    status ENUM('Pending', 'In Progress', 'Completed', 'Paused') DEFAULT 'Pending',
+    status ENUM('Pending', 'In Progress', 'Completed', 'Paused', 'Archived') DEFAULT 'Pending',
     start_time DATETIME NULL,
     end_time DATETIME NULL,
     deadline DATETIME NULL,

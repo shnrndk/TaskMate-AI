@@ -125,6 +125,31 @@ const createTask = async (req, res) => {
     }
   };
 
+  const archiveTask = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.id;
+
+      if (!id) {
+        return res.status(400).json({ message: 'Task ID is required' });
+      }
+
+      const [ArchiveUpdate] = await db.query(
+        `UPDATE tasks SET status = 'Archived' WHERE id = ? AND user_id = ?`,
+        [id, userId]
+      );
+  
+      if (ArchiveUpdate.affectedRows === 0) {
+        return res.status(404).json({ message: "Failed to archive the task." });
+      }
+
+      res.status(200).json({ message: 'Task archive successfully' });
+    } catch (err) {
+      console.error('Error deleting task:', err.message);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  };
+
 // Start a task
 const startTask = async (req, res) => {
   try {
@@ -392,5 +417,6 @@ const finishTask = async (req, res) => {
 };
   
 module.exports = { getAllTasks, createTask, updateTask, deleteTask,
-     startTask, pauseTask, resumeTask, getTaskById, checkTaskStarted, finishTask};
+     startTask, pauseTask, resumeTask, getTaskById, 
+     checkTaskStarted, finishTask, archiveTask};
   

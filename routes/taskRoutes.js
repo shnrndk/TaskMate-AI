@@ -14,6 +14,7 @@ router.put('/:id/start', taskController.startTask);
 router.put('/:id/pause', taskController.pauseTask);
 router.put('/:id/resume', taskController.resumeTask);
 router.put('/:id/finish', taskController.finishTask);
+router.put('/:id/archive', taskController.archiveTask);
 router.delete('/:id', taskController.deleteTask);
 router.get("/:id/status", taskController.checkTaskStarted);
 
