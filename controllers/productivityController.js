@@ -314,5 +314,94 @@ const getJSONReport = async (req, res) => {
       }
   };
 
+const getStatPerTask = async (req, res) => {
+    const { task_id } = req.params;
+
+    if (!task_id) {
+        return res.status(400).json({ error: 'Task ID is required' });
+    }
+
+    try {
+        // Fetch task details
+        const [taskRows] = await db.query(
+            `
+    SELECT 
+        id, title, description, category, priority, duration, status, 
+        start_time, end_time, deadline, subtasks_count, created_at 
+    FROM tasks 
+    WHERE id = ?
+    `,
+            [task_id]
+        );
+
+        if (taskRows.length === 0) {
+            return res.status(404).json({ error: 'Task not found' });
+        }
+
+        const task = taskRows[0];
+
+        // Fetch task timer sessions for the task
+        const [timerRows] = await db.query(
+            `
+    SELECT 
+        SUM(work_duration) AS total_work_duration,
+        SUM(break_duration) AS total_break_duration,
+        SUM(paused_duration) AS total_paused_duration,
+        SUM(pomodoro_cycles) AS total_pomodoro_cycles,
+        COUNT(id) AS total_sessions
+    FROM task_timer_sessions 
+    WHERE task_id = ?
+    `,
+            [task_id]
+        );
+
+        const timerStats = timerRows[0];
+
+        // Calculate efficiency stats
+        const estimatedWorkDuration = task.duration * 60; // Convert minutes to seconds
+        const actualWorkDuration = timerStats.total_work_duration || 0;
+        const breakDuration = timerStats.total_break_duration || 0;
+
+        const efficiencyScore =
+            actualWorkDuration && estimatedWorkDuration
+                ? ((actualWorkDuration / estimatedWorkDuration) * 100).toFixed(2)
+                : 0;
+
+        const totalTimeSpent = actualWorkDuration + breakDuration;
+
+        // Format response
+        const response = {
+            task: {
+                id: task.id,
+                title: task.title,
+                description: task.description,
+                category: task.category,
+                priority: task.priority,
+                estimatedDuration: task.duration, // in minutes
+                status: task.status,
+                startTime: task.start_time,
+                endTime: task.end_time,
+                deadline: task.deadline,
+                subtasksCount: task.subtasks_count,
+                createdAt: task.created_at,
+            },
+            stats: {
+                totalWorkDuration: (actualWorkDuration / 3600).toFixed(2), // in hours
+                totalBreakDuration: (breakDuration / 3600).toFixed(2), // in hours
+                totalPausedDuration: (timerStats.total_paused_duration / 3600).toFixed(2), // in hours
+                totalPomodoroCycles: timerStats.total_pomodoro_cycles || 0,
+                totalSessions: timerStats.total_sessions || 0,
+                efficiencyScore: `${efficiencyScore}%`,
+                totalTimeSpent: (totalTimeSpent / 3600).toFixed(2), // in hours
+            },
+        };
+
+        res.status(200).json(response);
+    } catch (error) {
+        console.error('Error fetching task stats:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 module.exports = { getProductivityData, getWeeklyProductivityData, 
-    getMonthlyProductivityData, getJSONReport };
+    getMonthlyProductivityData, getJSONReport, getStatPerTask };
