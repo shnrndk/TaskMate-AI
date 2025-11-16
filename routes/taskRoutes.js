@@ -28,6 +28,8 @@ router.put("/sub-tasks/:subTaskId/finish", subTaskController.finishSubTask);
 router.get("/sub-tasks/:id/status", subTaskController.checkSubTaskStarted);
 // Create a new sub-task for a specific task
 router.post("/:taskId/sub-tasks", subTaskController.createSubTask);
+router.post("/:taskId/sub-tasks/bulk", subTaskController.createMultipleSubTasks); // NEW bulk insert
+router.post("/:taskId/sub-tasks/generate", subTaskController.generateSubTasks);   // NEW LLM generator
 // Update a sub-task
 router.put("/sub-tasks/:id", subTaskController.updateSubTask);
 // Delete a sub-task

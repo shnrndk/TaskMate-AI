@@ -1,4 +1,12 @@
 const db = require("../config/db");
+const fetch = require("node-fetch"); 
+const axios = require("axios");         
+const OpenAI = require("openai");
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  fetch,                                     
+});
 
 // Get all sub-tasks for a parent task
 const getSubTasks = async (req, res) => {
@@ -70,6 +78,125 @@ const createSubTask = async (req, res) => {
   } catch (err) {
     console.error("Error creating sub-task:", err.message);
     res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// POST /api/tasks/:taskId/sub-tasks/bulk
+const createMultipleSubTasks = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const { subTasks } = req.body;
+
+    if (!Array.isArray(subTasks) || subTasks.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "subTasks must be a non-empty array." });
+    }
+
+    // Prepare values: [ [task_id, title, description, priority, duration, status], ... ]
+    const values = subTasks.map((st) => [
+      taskId,
+      st.title,
+      st.description || null,
+      st.duration || null,
+      st.status || "Pending",
+    ]);
+
+    const [result] = await db.query(
+      `INSERT INTO sub_tasks (task_id, title, description, duration, status)
+       VALUES ?`,
+      [values]
+    );
+
+    // Update subtasks_count += number of new subtasks
+    const [taskUpdate] = await db.query(
+      `UPDATE tasks SET subtasks_count = subtasks_count + ? WHERE id = ?`,
+      [subTasks.length, taskId]
+    );
+
+    if (taskUpdate.affectedRows === 0) {
+      return res.status(500).json({
+        message:
+          "Sub-tasks created, but failed to update the sub-task count.",
+      });
+    }
+
+    res.status(201).json({
+      message: "Sub-tasks created successfully and sub-task count updated.",
+      insertedCount: subTasks.length,
+    });
+  } catch (err) {
+    console.error("Error creating multiple sub-tasks:", err.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+// POST /api/tasks/:taskId/sub-tasks/generate
+const generateSubTasks = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const { title, description, duration, category, priority } = req.body;
+
+    const userContext = `
+Task: ${title}
+Description: ${description || "N/A"}
+Category: ${category || "N/A"}
+Priority: ${priority || "N/A"}
+Planned duration (mins): ${duration || "N/A"}
+    `;
+
+    const systemPrompt = `
+You are an assistant that breaks a task into 3–7 sub-tasks.
+Each sub-task must have:
+- title (short, action oriented)
+- duration (minutes, integer)
+- priority ("Low", "Medium", or "High").
+
+Return ONLY valid JSON in the form:
+{
+  "subTasks": [
+    { "title": "...", "duration": 30, "priority": "High" },
+    ...
+  ]
+}
+    `;
+
+    const openaiRes = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContext },
+        ],
+        response_format: { type: "json_object" },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const completion = openaiRes.data;
+    const raw = completion.choices[0].message.content;
+    const parsed = JSON.parse(raw);
+
+    if (!parsed.subTasks || !Array.isArray(parsed.subTasks)) {
+      return res
+        .status(500)
+        .json({ message: "Model response did not contain subTasks array." });
+    }
+
+    return res.json({
+      taskId,
+      subTasks: parsed.subTasks,
+    });
+  } catch (err) {
+    console.error("Error generating sub-tasks:", err.response?.data || err);
+    res.status(500).json({ message: "Failed to generate sub-tasks." });
   }
 };
 
@@ -412,5 +539,7 @@ module.exports = {
   resumeSubTask,
   getSubTaskById,
   checkSubTaskStarted,
-  finishSubTask
+  finishSubTask,
+  generateSubTasks,
+  createMultipleSubTasks
 };

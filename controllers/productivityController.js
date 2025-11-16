@@ -1,5 +1,4 @@
 const db = require("../config/db");
-const { parse } = require('json2csv');
 const fs = require('fs');
 const path = require('path');
 
