@@ -5,6 +5,7 @@ const cors = require('cors');
 const userRoutes = require('./routes/userRoutes');
 const taskRoutes = require('./routes/taskRoutes');
 const productivityRoutes = require('./routes/productivityRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
 const path = require('path');
 
 dotenv.config();
@@ -17,6 +18,7 @@ app.use(bodyParser.json());
 app.use('/api/users', userRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/productivity-data', productivityRoutes);
+app.use('/api/categories', categoryRoutes);
 
 // Serve static files from the React app
 app.use(express.static(path.join(__dirname, process.env.WEBAPP_PATH)));
